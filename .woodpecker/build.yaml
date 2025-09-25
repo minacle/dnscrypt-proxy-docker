@@ -19,7 +19,7 @@ steps:
     commands:
       - curl -fsSL https://api.github.com/repos/DNSCrypt/dnscrypt-proxy/releases/latest -o release.json
   - name: parse
-    image: ghcr.io/jqlang/jq
+    image: minacle/jq
     commands:
       - export IMAGE_VERSION=$(cat release.json | jq -r '.tag_name')
       - echo "IMAGE_VERSION=$IMAGE_VERSION" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
