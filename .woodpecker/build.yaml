@@ -25,6 +25,7 @@ steps:
       - echo "IMAGE_VERSION=$${IMAGE_VERSION}" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
       - export IMAGE_PLATFORM=$(echo ${platform} | sed 's/linux\\///')
       - echo "IMAGE_PLATFORM=$${IMAGE_PLATFORM}" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - if [ "$${IMAGE_PLATFORM}" = "amd64" ]; then export IMAGE_PLATFORM="x86_64"; fi
       - export DOWNLOAD_URL=$(cat release.json | jq -r '.assets[] | select(.name | test("^dnscrypt-proxy-linux_'$${IMAGE_PLATFORM}'-.*\\\\.tar\\\\.gz$")) | .browser_download_url')
       - echo "DOWNLOAD_URL=$${DOWNLOAD_URL}" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
       - echo "IMAGE_VERSION=$${IMAGE_VERSION}"
