@@ -1,0 +1,85 @@
+variables:
+  - &registry 'ghcr.io'
+  - &organization 'minacle'
+  - &repository-base 'dnscrypt-proxy-docker'
+
+when:
+  event:
+    - cron
+    - manual
+
+matrix:
+  platform:
+    - linux/amd64
+    - linux/arm64
+
+steps:
+  - name: fetch
+    image: alpine/curl
+    commands:
+      - curl -fsSL https://api.github.com/repos/DNSCrypt/dnscrypt-proxy/releases/latest -o release.json
+  - name: parse
+    image: ghcr.io/jqlang/jq
+    commands:
+      - export IMAGE_VERSION=$(cat release.json | jq -r '.tag_name')
+      - echo "IMAGE_VERSION=$IMAGE_VERSION" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - export IMAGE_PLATFORM=$(echo ${platform} | sed 's/linux\///')
+      - echo "IMAGE_PLATFORM=$IMAGE_PLATFORM" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - export DOWNLOAD_URL=$(cat release.json | jq -r '.assets[] | select(.name | test("^dnscrypt-proxy-linux_'$${IMAGE_PLATFORM}'-.*\\\\.tar\\\\.gz$")) | .browser_download_url')
+      - echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+  - name: check
+    image: docker:cli
+    environment:
+      IMAGE_REGISTRY: *registry
+      IMAGE_ORGANIZATION: *organization
+      IMAGE_REPOSITORY_BASE: *repository-base
+    commands:
+      - source ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - docker manifest inspect $${IMAGE_REGISTRY}/$${IMAGE_ORGANIZATION}/$${IMAGE_REPOSITORY_BASE}:$${IMAGE_VERSION}-$${IMAGE_PLATFORM} 2>/dev/null && export SKIP=true || export SKIP=false
+      - echo "SKIP=$${SKIP}" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  - name: download
+    image: quay.io/curl/curl
+    commands:
+      - source ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - \[ "$${SKIP}" = "true" \] && exit 0
+      - curl -L $DOWNLOAD_URL -o dnscrypt-proxy.tar.gz
+      - tar -xzf dnscrypt-proxy.tar.gz
+      - mv linux-$${IMAGE_PLATFORM}/dnscrypt-proxy linux-$${IMAGE_PLATFORM}/example-dnscrypt-proxy.toml .
+  - name: build
+    image: docker:cli
+    commands:
+      - source ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - \[ "$${SKIP}" = "true" \] && exit 0
+      - docker build -t dnscrypt-proxy-$${CI_PIPELINE_PARENT}-$${CI_PIPELINE_NUMBER}:latest .
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  - name: push
+    image: docker:cli
+    environment:
+      IMAGE_REGISTRY: *registry
+      IMAGE_ORGANIZATION: *organization
+      IMAGE_REPOSITORY_BASE: *repository-base
+      GITHUB_USERNAME:
+        from_secret: GITHUB_USERNAME
+      GITHUB_TOKEN:
+        from_secret: GITHUB_TOKEN
+    commands:
+      - source ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - \[ "$${SKIP}" = "true" \] && exit 0
+      - echo "$${GITHUB_TOKEN}" | docker login $${IMAGE_REGISTRY} -u $${GITHUB_USERNAME} --password-stdin
+      - docker image tag dnscrypt-proxy-$${CI_PIPELINE_PARENT}-$${CI_PIPELINE_NUMBER}:latest $${IMAGE_REGISTRY}/$${IMAGE_ORGANIZATION}/$${IMAGE_REPOSITORY_BASE}:$${IMAGE_VERSION}-$${IMAGE_PLATFORM}
+      - docker image tag dnscrypt-proxy-$${CI_PIPELINE_PARENT}-$${CI_PIPELINE_NUMBER}:latest $${IMAGE_REGISTRY}/$${IMAGE_ORGANIZATION}/$${IMAGE_REPOSITORY_BASE}:latest-$${IMAGE_PLATFORM}
+      - docker image push $${IMAGE_REGISTRY}/$${IMAGE_ORGANIZATION}/$${IMAGE_REPOSITORY_BASE}:$${IMAGE_VERSION}-$${IMAGE_PLATFORM}
+      - docker image push $${IMAGE_REGISTRY}/$${IMAGE_ORGANIZATION}/$${IMAGE_REPOSITORY_BASE}:latest-$${IMAGE_PLATFORM}
+      - docker logout $${IMAGE_REGISTRY}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  - name: cleanup
+    image: docker:cli
+    commands:
+      - source ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - docker image rm dnscrypt-proxy-$${CI_PIPELINE_PARENT}-$${CI_PIPELINE_NUMBER}:latest || true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
