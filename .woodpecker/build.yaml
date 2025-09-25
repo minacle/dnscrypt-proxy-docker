@@ -22,11 +22,14 @@ steps:
     image: minacle/jq
     commands:
       - export IMAGE_VERSION=$(cat release.json | jq -r '.tag_name')
-      - echo "IMAGE_VERSION=$IMAGE_VERSION" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - echo "IMAGE_VERSION=$${IMAGE_VERSION}" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
       - export IMAGE_PLATFORM=$(echo ${platform} | sed 's/linux\\///')
-      - echo "IMAGE_PLATFORM=$IMAGE_PLATFORM" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - echo "IMAGE_PLATFORM=$${IMAGE_PLATFORM}" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
       - export DOWNLOAD_URL=$(cat release.json | jq -r '.assets[] | select(.name | test("^dnscrypt-proxy-linux_'$${IMAGE_PLATFORM}'-.*\\\\.tar\\\\.gz$")) | .browser_download_url')
-      - echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - echo "DOWNLOAD_URL=$${DOWNLOAD_URL}" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - echo "IMAGE_VERSION=$${IMAGE_VERSION}"
+      - echo "IMAGE_PLATFORM=$${IMAGE_PLATFORM}"
+      - echo "DOWNLOAD_URL=$${DOWNLOAD_URL}"
   - name: check
     image: docker:cli
     environment:
@@ -37,6 +40,7 @@ steps:
       - source ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
       - docker manifest inspect $${IMAGE_REGISTRY}/$${IMAGE_ORGANIZATION}/$${IMAGE_REPOSITORY_BASE}:$${IMAGE_VERSION}-$${IMAGE_PLATFORM} 2>/dev/null && export SKIP=true || export SKIP=false
       - echo "SKIP=$${SKIP}" >> ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
+      - echo "SKIP=$${SKIP}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
   - name: download
@@ -44,7 +48,7 @@ steps:
     commands:
       - source ../.ci-${CI_PIPELINE_PARENT}-${CI_PIPELINE_NUMBER}.env
       - \[ "$${SKIP}" = "true" \] && exit 0
-      - curl -L $DOWNLOAD_URL -o dnscrypt-proxy.tar.gz
+      - curl -L $${DOWNLOAD_URL} -o dnscrypt-proxy.tar.gz
       - tar -xzf dnscrypt-proxy.tar.gz
       - mv linux-$${IMAGE_PLATFORM}/dnscrypt-proxy linux-$${IMAGE_PLATFORM}/example-dnscrypt-proxy.toml .
   - name: build
